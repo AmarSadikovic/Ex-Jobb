@@ -67,6 +67,7 @@ public class GeofenceTransitionsIntentService extends IntentService {
                 triggeringGeofences);
         sendNotification(geofenceTransitionDetails);
         if (geofenceTransition == Geofence.GEOFENCE_TRANSITION_ENTER) {
+
             System.out.println("Geofences ENTERED");
         } else if (geofenceTransition == Geofence.GEOFENCE_TRANSITION_EXIT) {
             System.out.println("Geofences EXITED");
