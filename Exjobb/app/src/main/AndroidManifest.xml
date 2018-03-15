@@ -15,6 +15,7 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="AIzaSyAlEnNFwXOcyt0jHlVOwv79PiQkdSGpXOc" />
+        <service android:enabled="true" android:name=".SoundPlayer" />
         <activity android:name=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -22,8 +23,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <service
-            android:name=".GeofenceTransitionsIntentService"/>
     </application>
 
 </manifest>

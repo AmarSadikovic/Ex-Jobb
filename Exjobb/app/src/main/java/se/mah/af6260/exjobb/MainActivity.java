@@ -1,15 +1,13 @@
 package se.mah.af6260.exjobb;
 
 import android.Manifest;
+import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Color;
 import android.location.Location;
-import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
-import android.support.v4.app.NotificationCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.util.Log;
 import android.widget.Toast;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
@@ -19,9 +17,7 @@ import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
-import com.google.android.gms.maps.model.CircleOptions;
 import com.google.android.gms.maps.model.LatLng;
-import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.Polygon;
 import com.google.android.gms.maps.model.PolygonOptions;
 import com.google.maps.android.PolyUtil;
@@ -34,13 +30,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private FusedLocationProviderClient mFusedLocationClient;
     private LocationRequest mLocationRequest;
     private LocationCallback mLocationCallback;
-    private List<Polygon> polygons;
-    private int polygonCounter = 0;
+    private List<Polygon> geofences;
+    private List<Integer> soundTracks;
+    private int currentGeofence;
     private MainActivity mainActivity = this;
-//    private GeofencingClient mGeofencingClient;
-//    private PendingIntent mGeofencePendingIntent;
-//    private GeofencingRequest mGeofenceRequest;
-//    private List<Geofence> mGeofenceList;
+
+    private MyServiceConnection mConnection;
+    public boolean mBound;
+    public SoundPlayer mService;
 
 
     @Override
@@ -50,40 +47,41 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
         createLocationRequest();
+        currentGeofence = 0;
+
+        mConnection = new MyServiceConnection(this);
+        Intent soundIntent = new Intent(this, SoundPlayer.class);
+        bindService(soundIntent, mConnection, Context.BIND_AUTO_CREATE);
+
         mLocationCallback = new LocationCallback() {
             @Override
             public void onLocationResult(LocationResult locationResult) {
                 for (Location location : locationResult.getLocations()) {
-//                    mMap.addMarker(new MarkerOptions()
-//                            .position(new LatLng(location.getLatitude(), location.getLongitude()))
-//                            .title("Hello world"));
                     Location locationl = locationResult.getLastLocation();
                     LatLng myPos = new LatLng(locationl.getLatitude(), locationl.getLongitude());
-                    if(PolyUtil.containsLocation(myPos, polygons.get(0).getPoints(), false)){
-                        polygons.get(0).setFillColor(0x3F00FF00);
-                        polygons.get(0).setStrokeColor(0x4F009F00);
-                        Toast.makeText(mainActivity, "Inside polygon " + 0, Toast.LENGTH_LONG).show();
-                    } else {
-                        polygons.get(0).setFillColor(0x3FFF0000);
-                        polygons.get(0).setStrokeColor(0x4F9F0000);
-                    }
 
-                    if(PolyUtil.containsLocation(myPos, polygons.get(1).getPoints(), false)){
-                        polygons.get(1).setFillColor(0x3F00FF00);
-                        polygons.get(1).setStrokeColor(0x4F009F00);
-                        Toast.makeText(mainActivity, "Inside polygon " + 1, Toast.LENGTH_LONG).show();
+                    if(PolyUtil.containsLocation(myPos, geofences.get(currentGeofence).getPoints(), false)){
+                        geofences.get(currentGeofence).setFillColor(0x3F00FF00);
+                        geofences.get(currentGeofence).setStrokeColor(0x4F009F00);
+                        Toast.makeText(mainActivity, "Inside polygon " + currentGeofence, Toast.LENGTH_LONG).show();
+                        if(!mService.isPlaying()){
+                            mService.playSound(soundTracks.get(currentGeofence));
+                        } else {
+                            mService.stopSound();
+                            mService.playSound(soundTracks.get(currentGeofence));
+                        }
+                        if(geofences.size()-1 > currentGeofence) {
+                            currentGeofence++;
+                        } else {
+                            currentGeofence = 0;
+                            for(int i = 0 ; i< geofences.size(); i++){
+                                geofences.get(i).setFillColor(0x3FFF0000);
+                                geofences.get(i).setStrokeColor(0x4F9F0000);
+                            }
+                        }
                     } else {
-                        polygons.get(1).setFillColor(0x3FFF0000);
-                        polygons.get(1).setStrokeColor(0x4F9F0000);
-                    }
-
-                    if(PolyUtil.containsLocation(myPos, polygons.get(2).getPoints(), false)){
-                        polygons.get(2).setFillColor(0x3F00FF00);
-                        polygons.get(2).setStrokeColor(0x4F009F00);
-                        Toast.makeText(mainActivity, "Inside polygon " + 2, Toast.LENGTH_LONG).show();
-                    } else {
-                        polygons.get(2).setFillColor(0x3FFF0000);
-                        polygons.get(2).setStrokeColor(0x4F9F0000);
+                        geofences.get(currentGeofence).setFillColor(0x3F0000FF);
+                        geofences.get(currentGeofence).setStrokeColor(0x4F00009F);
                     }
 
                     System.out.println("new location " + " LAT "  + myPos.latitude + " Long " + myPos.longitude);
@@ -91,14 +89,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             };
         };
 
-        SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
-                .findFragmentById(R.id.map);
+        SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
-        polygons = new ArrayList<Polygon>();
-//        mGeofenceList = new ArrayList<Geofence>();
-//        mGeofencePendingIntent = null;
-//        mGeofencingClient = LocationServices.getGeofencingClient(this);
+        geofences = new ArrayList<Polygon>();
 
+        soundTracks = new ArrayList<Integer>();
+
+        soundTracks.add(R.raw.airplane);
+        soundTracks.add(R.raw.seagull);
+        soundTracks.add(R.raw.slime);
     }
 
 
@@ -110,24 +109,26 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
         mMap.setMyLocationEnabled(true);
         startLocationUpdates();
-        Polygon polygon = mMap.addPolygon(new PolygonOptions()
-                .add(new LatLng(55.611205, 12.994459), new LatLng(55.611213, 12.994691), new LatLng(55.610791, 12.994818), new LatLng(55.610777, 12.994524))
-                .strokeColor(0x4F00009F)
-                .fillColor(0x3F0000FF));
-        polygons.add(polygon);
-        Polygon polygon2 = mMap.addPolygon(new PolygonOptions()
-                .add(new LatLng(55.610791, 12.994818), new LatLng(55.610777, 12.994524), new LatLng(55.610071, 12.994729), new LatLng(55.610102, 12.995018))
-                .strokeColor(0x4F00009F)
-                .fillColor(0x3F0000FF));
-        polygons.add(polygon2);
-        Polygon polygon3 = mMap.addPolygon(new PolygonOptions()
-                .add(new LatLng(55.610071, 12.994729), new LatLng(55.610102, 12.995018), new LatLng(55.609044, 12.995282), new LatLng(55.609016 , 12.994995))
-                .strokeColor(0x4F00009F)
-                .fillColor(0x3F0000FF));
-        polygons.add(polygon3);
-//        createGeofence(new LatLng(55.688984, 13.174774));
-//        addGeofences();
+        addGeofences();
+    }
 
+
+    private void addGeofences(){
+        Polygon polygon = mMap.addPolygon(new PolygonOptions()
+                .add(new LatLng(55.611242, 12.994413), new LatLng(55.611268, 12.994772), new LatLng(55.610745, 12.994912), new LatLng(55.610726, 12.994483))
+                .strokeColor(0x4F9F0000)
+                .fillColor(0x3FFF0000));
+        geofences.add(polygon);
+        Polygon polygon2 = mMap.addPolygon(new PolygonOptions()
+                .add(new LatLng(55.610745, 12.994912), new LatLng(55.610726, 12.994483), new LatLng(55.610094, 12.994680), new LatLng(55.610103, 12.995077) )
+                .strokeColor(0x4F9F0000)
+                .fillColor(0x3FFF0000));
+        geofences.add(polygon2);
+        Polygon polygon3 = mMap.addPolygon(new PolygonOptions()
+                .add(new LatLng(55.610103, 12.995077), new LatLng(55.610094, 12.994680), new LatLng(55.609048, 12.994943), new LatLng(55.609090 , 12.995313))
+                .strokeColor(0x4F9F0000)
+                .fillColor(0x3FFF0000));
+        geofences.add(polygon3);
     }
 
     private void startLocationUpdates() {
@@ -145,93 +146,4 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         mLocationRequest.setFastestInterval(5000);
         mLocationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
     }
-
-
-    //GEOFENCE
-
-//    public void createRectGeofence(LatLng latLng) {
-//        mGeofenceList.add(new Geofence.Builder()
-//                // Set the request ID of the geofence. This is a string to identify this
-//                // geofence.
-//                .setRequestId("test")
-//                .setCircularRegion(
-//                        latLng.latitude,
-//                        latLng.longitude,
-//                        50
-//                )
-//
-//                .setExpirationDuration(Geofence.NEVER_EXPIRE)
-//                .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER | Geofence.GEOFENCE_TRANSITION_EXIT)
-//                .build());
-//
-//        CircleOptions circleOptions = new CircleOptions()
-//                .center( new LatLng(latLng.latitude, latLng.longitude) )
-//                .radius( 50 )
-//                .fillColor(0x40ff0000)
-//                .strokeColor(Color.TRANSPARENT)
-//                .strokeWidth(2);
-//        mMap.addCircle(circleOptions);
-//    }
-//
-//    public void createGeofence(LatLng latLng) {
-//        mGeofenceList.add(new Geofence.Builder()
-//                // Set the request ID of the geofence. This is a string to identify this
-//                // geofence.
-//                .setRequestId("test")
-//                .setCircularRegion(
-//                        latLng.latitude,
-//                        latLng.longitude,
-//                        50
-//                )
-//
-//                .setExpirationDuration(Geofence.NEVER_EXPIRE)
-//                .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER | Geofence.GEOFENCE_TRANSITION_EXIT)
-//                .build());
-//
-//        CircleOptions circleOptions = new CircleOptions()
-//                .center( new LatLng(latLng.latitude, latLng.longitude) )
-//                .radius( 50 )
-//                .fillColor(0x40ff0000)
-//                .strokeColor(Color.TRANSPARENT)
-//                .strokeWidth(2);
-//        mMap.addCircle(circleOptions);
-//    }
-//
-//    public void addGeofences() {
-//        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-//            return;
-//        }
-//        mGeofencingClient.addGeofences(getGeofencingRequest(), getGeofencePendingIntent())
-//                .addOnSuccessListener(this, new OnSuccessListener<Void>() {
-//                    @Override
-//                    public void onSuccess(Void aVoid) {
-//                        System.out.println("Geofences added");
-//                    }
-//                })
-//                .addOnFailureListener(this, new OnFailureListener() {
-//                    @Override
-//                    public void onFailure(@NonNull Exception e) {
-//                        System.out.println("Geofences FAILED to add");
-//                    }
-//                });
-//    }
-//
-//    private PendingIntent getGeofencePendingIntent() {
-//        // Reuse the PendingIntent if we already have it.
-//        if (mGeofencePendingIntent != null) {
-//            return mGeofencePendingIntent;
-//        }
-//        Intent intent = new Intent(this, GeofenceTransitionsIntentService.class);
-//        // We use FLAG_UPDATE_CURRENT so that we get the same pending intent back when
-//        // calling addGeofences() and removeGeofences().
-//        mGeofencePendingIntent = PendingIntent.getService(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
-//        return mGeofencePendingIntent;
-//    }
-//
-//    private GeofencingRequest getGeofencingRequest() {
-//        GeofencingRequest.Builder builder = new GeofencingRequest.Builder();
-//        builder.setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER);
-//        builder.addGeofences(mGeofenceList);
-//        return builder.build();
-//    }
 }
