@@ -16,6 +16,8 @@ public class SoundPlayer extends Service{
     private MainActivity mainActivity;
     private LocalBinder mBinder;
     private boolean isPlaying;
+    private boolean isPause;
+    private int pauseTime;
 
     @Nullable
     @Override
@@ -27,6 +29,7 @@ public class SoundPlayer extends Service{
     public void onCreate() {
         super.onCreate();
         isPlaying = false;
+        isPause = false;
         mBinder = new LocalBinder();
     }
 
@@ -51,6 +54,22 @@ public class SoundPlayer extends Service{
                 stopSound();
             }
         });
+    }
+
+    public void pauseSound(){
+        pauseTime = player.getCurrentPosition();
+        player.pause();
+        isPause = true;
+    }
+
+    public void resume(){
+        player.seekTo(pauseTime);
+        player.start();
+        isPause = false;
+    }
+
+    public boolean isPause(){
+        return isPause;
     }
 
     public void stopSound(){
