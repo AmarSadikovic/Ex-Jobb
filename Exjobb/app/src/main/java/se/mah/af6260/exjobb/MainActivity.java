@@ -6,6 +6,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.Location;
+import android.os.Environment;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
@@ -31,9 +32,14 @@ import com.google.android.gms.maps.model.PolygonOptions;
 import com.google.maps.android.PolyUtil;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
@@ -54,6 +60,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public Stopwatch myStopwatch;
     public LatLng lastPos;
     public float distanceInMeters = 0;
+
+    public File gpxfile;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -76,6 +84,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     LatLng myPos = new LatLng(locationl.getLatitude(), locationl.getLongitude());
 
                     if(walkStart) {
+                        //Textdokument location
+                        logToTextdoc(myPos);
+
                         //Check if walk is at end
                         if (!mService.isPlaying() && geofences.size()-1 == currentGeofence) {
                             walkStart = false;
@@ -117,7 +128,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                                 geofences.get(currentGeofence - 1).setFillColor(0x3F00FF00);
                                 geofences.get(currentGeofence - 1).setStrokeColor(0x4F009F00);
                             }
-
                             //Enter new geofence
                             if (PolyUtil.containsLocation(myPos, geofences.get(currentGeofence).getPoints(), false) && !mService.isPause() && !mService.isPlaying()) {
                                 geofences.get(currentGeofence).setFillColor(0x3F00FF00);
@@ -129,6 +139,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                                     geofences.get(currentGeofence).setFillColor(0x3F0000FF);
                                     geofences.get(currentGeofence).setStrokeColor(0x4F00009F);
                                 }
+                            }
+                            if(!mService.isPause()){
                                 float[] results = new float[1];
                                 Location.distanceBetween(lastPos.latitude, lastPos.longitude, myPos.latitude, myPos.longitude, results);
                                 distanceInMeters += results[0];
@@ -159,6 +171,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                                             }
                                             walkStart = true;
                                             myStopwatch.startTimer();
+
+                                            logToTextdoc();
                                         }
                                     });
                             alertDialog.show();
@@ -189,6 +203,35 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         mMap.setMyLocationEnabled(true);
         startLocationUpdates();
         addGeofences();
+    }
+
+    public void logToTextdoc(){
+        try {
+            Date currentTime = Calendar.getInstance().getTime();
+            File root = new File(Environment.getExternalStorageDirectory(), "Notes");
+            if (!root.exists()) {
+                root.mkdirs();
+            }
+            gpxfile = new File(root, "Locations " + currentTime.toString());
+            FileWriter writer = new FileWriter(gpxfile);
+            writer.append("Latitude    Longitude");
+            writer.flush();
+            writer.close();
+            Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    public void logToTextdoc(LatLng pos){
+        try {
+            FileWriter writer = new FileWriter(gpxfile);
+            writer.append(pos.latitude + "  "  + pos.longitude);
+            writer.flush();
+            writer.close();
+        }
+        catch (Exception e) {
+            Log.e("Exception", "File write failed: " + e.toString());
+        }
     }
 
 
