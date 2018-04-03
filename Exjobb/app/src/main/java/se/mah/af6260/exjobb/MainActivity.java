@@ -2,13 +2,18 @@ package se.mah.af6260.exjobb;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.support.v4.app.ActivityCompat;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.text.Html;
+import android.text.method.LinkMovementMethod;
 import android.util.Log;
+import android.widget.TextView;
 import android.widget.Toast;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
@@ -45,12 +50,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public boolean mBound;
     public SoundPlayer mService;
 
+    public boolean walkStart = false;
+    public Stopwatch myStopwatch;
+    public LatLng lastPos;
+    public float distanceInMeters = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
+        myStopwatch = new Stopwatch();
         mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
         createLocationRequest();
         currentGeofence = 0;
@@ -62,45 +71,100 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         mLocationCallback = new LocationCallback() {
             @Override
             public void onLocationResult(LocationResult locationResult) {
-                for (Location location : locationResult.getLocations()) {
+
                     Location locationl = locationResult.getLastLocation();
                     LatLng myPos = new LatLng(locationl.getLatitude(), locationl.getLongitude());
 
-                    if(PolyUtil.containsLocation(myPos, geofences.get(currentGeofence).getPoints(), false) && !mService.isPlaying()){
-                        geofences.get(currentGeofence).setFillColor(0x3F00FF00);
-                        geofences.get(currentGeofence).setStrokeColor(0x4F009F00);
-                        Toast.makeText(mainActivity, "Inside polygon " + currentGeofence, Toast.LENGTH_LONG).show();
-                        mService.playSound(soundTracks.get(currentGeofence));
-                        if(geofences.size()-1 > currentGeofence) {
-                            currentGeofence++;
-                            geofences.get(currentGeofence).setFillColor(0x3F0000FF);
-                            geofences.get(currentGeofence).setStrokeColor(0x4F00009F);
-                        } else {
+                    if(walkStart) {
+                        //Check if walk is at end
+                        if (!mService.isPlaying() && geofences.size()-1 == currentGeofence) {
+                            walkStart = false;
                             currentGeofence = 0;
-                            for(int i = 0 ; i< geofences.size(); i++){
+                            for (int i = 0; i < geofences.size(); i++) {
                                 geofences.get(i).setFillColor(0x3FFF0000);
                                 geofences.get(i).setStrokeColor(0x4F9F0000);
                             }
-                        }
-                    } else {
-                        geofences.get(currentGeofence).setFillColor(0x3F0000FF);
-                        geofences.get(currentGeofence).setStrokeColor(0x4F00009F);
-                        if(mService.isPlaying()){
-                            if(!(PolyUtil.containsLocation(myPos, geofences.get(currentGeofence-1).getPoints(), false))
-                            && !(PolyUtil.containsLocation(myPos, geofences.get(currentGeofence).getPoints(), false))){
-                                mService.pauseSound();
-                                geofences.get(currentGeofence-1).setFillColor(0x3FFFFF00);
-                                geofences.get(currentGeofence-1).setStrokeColor(0x4F9F9F00);
-                            } else if(mService.isPause()) {
+
+                            //ALERT FÖR AVSLUTAD VANDRING
+                            TextView tv = new TextView(mainActivity);
+                            tv.setMovementMethod(LinkMovementMethod.getInstance());
+                            tv.setText(Html.fromHtml("<b>Vandring klart!</b> <br>" +
+                                    "Medelhastighet: <b>" + String.format("%.2f", (distanceInMeters/myStopwatch.getSeconds())) + "</b> m/s<br>" +
+                                    "Besök länk för att besvara enkät: <a href='https://docs.google.com/forms/d/16AMvDPzxSQlolzcf8UdvNi6B2DOcJIR1A6YK9rRMrVg/prefill'>Click Here</a>"));
+                            AlertDialog alertDialog = new AlertDialog.Builder(MainActivity.this).create();
+                            alertDialog.setTitle("Alert");
+                            alertDialog.setView(tv);
+                            alertDialog.setButton(AlertDialog.BUTTON_NEUTRAL, "OK",
+                                    new DialogInterface.OnClickListener() {
+                                        public void onClick(DialogInterface dialog, int which) {
+                                            dialog.dismiss();
+                                        }
+                                    });
+                            alertDialog.show();
+                        } else if(walkStart){
+
+                            if (!(PolyUtil.containsLocation(myPos, geofences.get(currentGeofence - 1).getPoints(), false)) && !(PolyUtil.containsLocation(myPos, geofences.get(currentGeofence).getPoints(), false))) {
+                                if (!mService.isPause()) {
+                                    mService.pauseSound();
+                                    myStopwatch.pauseTimer();
+                                    geofences.get(currentGeofence - 1).setFillColor(0x3FFFFF00);
+                                    geofences.get(currentGeofence - 1).setStrokeColor(0x4F9F9F00);
+                                }
+                                //Re-entered geofence when paused
+                            } else if (mService.isPause()) {
                                 mService.resume();
-                                geofences.get(currentGeofence-1).setFillColor(0x3F00FF00);
-                                geofences.get(currentGeofence-1).setStrokeColor(0x4F009F00);
+                                myStopwatch.resumeTimer();
+                                geofences.get(currentGeofence - 1).setFillColor(0x3F00FF00);
+                                geofences.get(currentGeofence - 1).setStrokeColor(0x4F009F00);
+                            }
+
+                            //Enter new geofence
+                            if (PolyUtil.containsLocation(myPos, geofences.get(currentGeofence).getPoints(), false) && !mService.isPause() && !mService.isPlaying()) {
+                                geofences.get(currentGeofence).setFillColor(0x3F00FF00);
+                                geofences.get(currentGeofence).setStrokeColor(0x4F009F00);
+                                Toast.makeText(mainActivity, "Inside polygon " + currentGeofence, Toast.LENGTH_LONG).show();
+                                mService.playSound(soundTracks.get(currentGeofence));
+                                if (geofences.size() - 1 > currentGeofence) {
+                                    currentGeofence++;
+                                    geofences.get(currentGeofence).setFillColor(0x3F0000FF);
+                                    geofences.get(currentGeofence).setStrokeColor(0x4F00009F);
+                                }
+                                float[] results = new float[1];
+                                Location.distanceBetween(lastPos.latitude, lastPos.longitude, myPos.latitude, myPos.longitude, results);
+                                distanceInMeters += results[0];
+                                lastPos = myPos;
                             }
                         }
+                    } else {
+                        if (PolyUtil.containsLocation(myPos, geofences.get(currentGeofence).getPoints(), false)) {
+                            lastPos = myPos;
+                            TextView tv = new TextView(mainActivity);
+                            tv.setMovementMethod(LinkMovementMethod.getInstance());
+                            tv.setText("Inside geofence # 1, Press OK to start testwalk");
+                            AlertDialog alertDialog = new AlertDialog.Builder(MainActivity.this).create();
+                            alertDialog.setTitle("Alert");
+                            alertDialog.setView(tv);
+                            alertDialog.setButton(AlertDialog.BUTTON_NEUTRAL, "OK",
+                                    new DialogInterface.OnClickListener() {
+                                        public void onClick(DialogInterface dialog, int which) {
+                                            dialog.dismiss();
+                                            geofences.get(currentGeofence).setFillColor(0x3F00FF00);
+                                            geofences.get(currentGeofence).setStrokeColor(0x4F009F00);
+                                            Toast.makeText(mainActivity, "Inside polygon " + currentGeofence, Toast.LENGTH_LONG).show();
+                                            mService.playSound(soundTracks.get(currentGeofence));
+                                            if (geofences.size() - 1 > currentGeofence) {
+                                                currentGeofence++;
+                                                geofences.get(currentGeofence).setFillColor(0x3F0000FF);
+                                                geofences.get(currentGeofence).setStrokeColor(0x4F00009F);
+                                            }
+                                            walkStart = true;
+                                            myStopwatch.startTimer();
+                                        }
+                                    });
+                            alertDialog.show();
+                        }
                     }
-
                     System.out.println("new location " + " LAT "  + myPos.latitude + " Long " + myPos.longitude);
-                }
             };
         };
 
@@ -110,9 +174,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         soundTracks = new ArrayList<Integer>();
 
-        soundTracks.add(R.raw.airplane);
-        soundTracks.add(R.raw.seagull);
-        soundTracks.add(R.raw.slime);
+        for(int i = 0 ; i< 12; i++){
+            soundTracks.add(R.raw.slime);
+        }
     }
 
 
@@ -153,28 +217,20 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             ex.printStackTrace();
         }
 
-        for(int i = 1; i < latLngs1.size(); i++){
-            System.out.println(i + "      " + latLngs1.size() + "         " + latLngs2.size());
+        //First geofence blue
+        Polygon polygonstart = mMap.addPolygon(new PolygonOptions()
+                .add(latLngs2.get(1-1),  latLngs2.get(1), latLngs1.get(1), latLngs1.get(1-1))
+                .strokeColor(0x3F0000FF)
+                .fillColor(0x4F00009F));
+        geofences.add(polygonstart);
+        //Rest red
+        for(int i = 2; i < latLngs1.size(); i++){
             Polygon polygon = mMap.addPolygon(new PolygonOptions()
                     .add(latLngs2.get(i-1),  latLngs2.get(i), latLngs1.get(i), latLngs1.get(i-1))
                     .strokeColor(0x4F9F0000)
                     .fillColor(0x3FFF0000));
             geofences.add(polygon);
         }
-
-
-
-
-//        Polygon polygon2 = mMap.addPolygon(new PolygonOptions()
-//                .add(new LatLng(55.610745, 12.994912), new LatLng(55.610726, 12.994483), new LatLng(55.610094, 12.994680), new LatLng(55.610103, 12.995077) )
-//                .strokeColor(0x4F9F0000)
-//                .fillColor(0x3FFF0000));
-//        geofences.add(polygon2);
-//        Polygon polygon3 = mMap.addPolygon(new PolygonOptions()
-//                .add(new LatLng(55.610103, 12.995077), new LatLng(55.610094, 12.994680), new LatLng(55.609048, 12.994943), new LatLng(55.609090 , 12.995313))
-//                .strokeColor(0x4F9F0000)
-//                .fillColor(0x3FFF0000));
-//        geofences.add(polygon3);
     }
 
     private void startLocationUpdates() {

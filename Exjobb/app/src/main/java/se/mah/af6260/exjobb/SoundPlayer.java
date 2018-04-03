@@ -17,6 +17,7 @@ public class SoundPlayer extends Service{
     private LocalBinder mBinder;
     private boolean isPlaying;
     private boolean isPause;
+    private boolean isFinished;
     private int pauseTime;
 
     @Nullable
@@ -30,6 +31,7 @@ public class SoundPlayer extends Service{
         super.onCreate();
         isPlaying = false;
         isPause = false;
+        isFinished = true;
         mBinder = new LocalBinder();
     }
 
@@ -45,6 +47,7 @@ public class SoundPlayer extends Service{
         player = MediaPlayer.create(this, res);
         player.setVolume(100,100);
         isPlaying = true;
+        isFinished = false;
         player.setLooping(false);
         player.start();
         System.out.println("LJUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUD");
@@ -57,14 +60,18 @@ public class SoundPlayer extends Service{
     }
 
     public void pauseSound(){
-        pauseTime = player.getCurrentPosition();
-        player.pause();
+        if(!isFinished) {
+            pauseTime = player.getCurrentPosition();
+            player.pause();
+        }
         isPause = true;
     }
 
     public void resume(){
-        player.seekTo(pauseTime);
-        player.start();
+        if(!isFinished) {
+            player.seekTo(pauseTime);
+            player.start();
+        }
         isPause = false;
     }
 
@@ -76,6 +83,7 @@ public class SoundPlayer extends Service{
         player.stop();
         player.release();
         isPlaying = false;
+        isFinished = true;
         System.out.println("STOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOP");
     }
 
