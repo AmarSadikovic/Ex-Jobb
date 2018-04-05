@@ -24,7 +24,7 @@ public class Stopwatch {
 
     public void resumeTimer(){
         long dif = System.nanoTime() - pauseNanoSeconds;
-        startNanoSeconds =+ dif;
+        startNanoSeconds += dif;
     }
 
     public void pauseTimer(){

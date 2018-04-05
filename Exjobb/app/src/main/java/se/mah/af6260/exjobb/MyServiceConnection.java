@@ -21,12 +21,10 @@ public class MyServiceConnection implements ServiceConnection {
         mActivity.mService = binder.getService();
         mActivity.mBound = true;
         mActivity.mService.setListenerActivity(mActivity);
-        Toast.makeText(mActivity, "Service bound", Toast.LENGTH_SHORT).show();
     }
 
     @Override
     public void onServiceDisconnected(ComponentName componentName) {
         mActivity.mBound = false;
-        Toast.makeText(mActivity, "Service unbound", Toast.LENGTH_SHORT).show();
     }
 }

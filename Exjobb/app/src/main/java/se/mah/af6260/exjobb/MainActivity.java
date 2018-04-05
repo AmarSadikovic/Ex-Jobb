@@ -8,6 +8,7 @@ import android.content.pm.PackageManager;
 import android.location.Location;
 import android.os.Environment;
 import android.support.v4.app.ActivityCompat;
+import android.support.v7.app.ActionBar;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -21,6 +22,8 @@ import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.maps.CameraUpdate;
+import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
@@ -29,6 +32,8 @@ import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.Polygon;
 import com.google.android.gms.maps.model.PolygonOptions;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.android.gms.tasks.Task;
 import com.google.maps.android.PolyUtil;
 
 import java.io.BufferedReader;
@@ -56,17 +61,29 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public boolean mBound;
     public SoundPlayer mService;
 
-    public boolean walkStart = false;
-    public Stopwatch myStopwatch;
-    public LatLng lastPos;
-    public float distanceInMeters = 0;
-
-    public File gpxfile;
-
+    private boolean startDialog = false;
+    private boolean walkStart = false;
+    private Stopwatch myStopwatch;
+    private LatLng lastPos;
+    private float distanceInMeters = 0;
+    private boolean isWalkFinished = false;
+    private File gpxfile;
+    private ActionBar actionBar;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        int status = this.getPackageManager().checkPermission(Manifest.permission.ACCESS_FINE_LOCATION, this.getPackageName());
+        if (status == PackageManager.PERMISSION_DENIED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
+        }
+        while (status == PackageManager.PERMISSION_DENIED) {
+            if (this.getPackageManager().checkPermission(android.Manifest.permission.ACCESS_FINE_LOCATION, this.getPackageName()) == PackageManager.PERMISSION_GRANTED) {
+                status = PackageManager.PERMISSION_GRANTED;
+            }
+        }
+        actionBar = getSupportActionBar();
+        actionBar.setTitle("Rör dig till blå markerat område");
         myStopwatch = new Stopwatch();
         mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
         createLocationRequest();
@@ -85,32 +102,30 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                     if(walkStart) {
                         //Textdokument location
-                        logToTextdoc(myPos);
+                        //logToTextdoc(myPos);
 
                         //Check if walk is at end
-                        if (!mService.isPlaying() && geofences.size()-1 == currentGeofence) {
+                        if (!mService.isPlaying() && isWalkFinished) {
                             walkStart = false;
                             currentGeofence = 0;
-                            for (int i = 0; i < geofences.size(); i++) {
+                            for (int i = 1; i < geofences.size(); i++) {
                                 geofences.get(i).setFillColor(0x3FFF0000);
                                 geofences.get(i).setStrokeColor(0x4F9F0000);
                             }
+                            geofences.get(currentGeofence).setFillColor(0x3F0000FF);
+                            geofences.get(currentGeofence).setStrokeColor(0x4F00009F);
 
                             //ALERT FÖR AVSLUTAD VANDRING
                             TextView tv = new TextView(mainActivity);
                             tv.setMovementMethod(LinkMovementMethod.getInstance());
-                            tv.setText(Html.fromHtml("<b>Vandring klart!</b> <br>" +
-                                    "Medelhastighet: <b>" + String.format("%.2f", (distanceInMeters/myStopwatch.getSeconds())) + "</b> m/s<br>" +
-                                    "Besök länk för att besvara enkät: <a href='https://docs.google.com/forms/d/16AMvDPzxSQlolzcf8UdvNi6B2DOcJIR1A6YK9rRMrVg/prefill'>Click Here</a>"));
+                            double ms = (distanceInMeters/myStopwatch.getSeconds());
+                            tv.setText(Html.fromHtml("<H2>Medelhastighet(NOTERA): </H2><b> <H3>" + String.format("%.2f", ms) + " m/s</H3></b><br>" +
+                                    "<H2>Besök länk för att besvara enkät: <a href='https://docs.google.com/forms/d/16AMvDPzxSQlolzcf8UdvNi6B2DOcJIR1A6YK9rRMrVg/prefill'>Click Here</a></H2>"));
                             AlertDialog alertDialog = new AlertDialog.Builder(MainActivity.this).create();
-                            alertDialog.setTitle("Alert");
+                            alertDialog.setTitle("Vandring klar!");
                             alertDialog.setView(tv);
-                            alertDialog.setButton(AlertDialog.BUTTON_NEUTRAL, "OK",
-                                    new DialogInterface.OnClickListener() {
-                                        public void onClick(DialogInterface dialog, int which) {
-                                            dialog.dismiss();
-                                        }
-                                    });
+                            alertDialog.setCanceledOnTouchOutside(false);
+                            alertDialog.setCancelable(false);
                             alertDialog.show();
                         } else if(walkStart){
 
@@ -118,6 +133,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                                 if (!mService.isPause()) {
                                     mService.pauseSound();
                                     myStopwatch.pauseTimer();
+                                    actionBar.setTitle("Pausad Geofence #" + currentGeofence);
                                     geofences.get(currentGeofence - 1).setFillColor(0x3FFFFF00);
                                     geofences.get(currentGeofence - 1).setStrokeColor(0x4F9F9F00);
                                 }
@@ -125,19 +141,22 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                             } else if (mService.isPause()) {
                                 mService.resume();
                                 myStopwatch.resumeTimer();
+                                actionBar.setTitle("I Geofence område " + currentGeofence + 1);
                                 geofences.get(currentGeofence - 1).setFillColor(0x3F00FF00);
                                 geofences.get(currentGeofence - 1).setStrokeColor(0x4F009F00);
                             }
                             //Enter new geofence
-                            if (PolyUtil.containsLocation(myPos, geofences.get(currentGeofence).getPoints(), false) && !mService.isPause() && !mService.isPlaying()) {
+                            if (!isWalkFinished && PolyUtil.containsLocation(myPos, geofences.get(currentGeofence).getPoints(), false) && !mService.isPause() && !mService.isPlaying()) {
                                 geofences.get(currentGeofence).setFillColor(0x3F00FF00);
                                 geofences.get(currentGeofence).setStrokeColor(0x4F009F00);
-                                Toast.makeText(mainActivity, "Inside polygon " + currentGeofence, Toast.LENGTH_LONG).show();
+                                actionBar.setTitle("I Geofence område " + (currentGeofence + 1));
                                 mService.playSound(soundTracks.get(currentGeofence));
                                 if (geofences.size() - 1 > currentGeofence) {
                                     currentGeofence++;
                                     geofences.get(currentGeofence).setFillColor(0x3F0000FF);
                                     geofences.get(currentGeofence).setStrokeColor(0x4F00009F);
+                                } else {
+                                    isWalkFinished = true;
                                 }
                             }
                             if(!mService.isPause()){
@@ -147,22 +166,28 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                                 lastPos = myPos;
                             }
                         }
-                    } else {
+                    } else if(!startDialog) {
                         if (PolyUtil.containsLocation(myPos, geofences.get(currentGeofence).getPoints(), false)) {
                             lastPos = myPos;
                             TextView tv = new TextView(mainActivity);
                             tv.setMovementMethod(LinkMovementMethod.getInstance());
-                            tv.setText("Inside geofence # 1, Press OK to start testwalk");
+                            tv.setText(Html.fromHtml("Inside geofence # 1, Lite information om vandringen <br>" +
+                            "<h2><font color='blue'>Blåa</font> Geofence områden:</h2> Är det nästa geofence du ska röra dig mot <br>" +
+                            "<h2><font color='red'>Röda</font> Geofence områden:</h2> Är geofences som inte är aktiva ännu men som kommer användas i vandringen senare. <br>" +
+                            "<h2><font color='#F9F9F00'>Gula</font> Geofence områden:</h2> Betyder att vandringen är pausad och du har rört dig utanför aktivt geofence område, gå tillbaka till gul markerat område för att återupta vandringen. <br> " +
+                                    "<h2><font color='green'>Gröna</font> Geofence områden:</h2> Betyder att du har spelat eller spelar upp ljud för området. <br>" +
+                            "<h2>För att starta vandringen klicka OK! Lycka till!</h2>"));
                             AlertDialog alertDialog = new AlertDialog.Builder(MainActivity.this).create();
-                            alertDialog.setTitle("Alert");
+                            alertDialog.setTitle("TestWalk");
                             alertDialog.setView(tv);
+                            alertDialog.setCanceledOnTouchOutside(false);
                             alertDialog.setButton(AlertDialog.BUTTON_NEUTRAL, "OK",
                                     new DialogInterface.OnClickListener() {
                                         public void onClick(DialogInterface dialog, int which) {
                                             dialog.dismiss();
                                             geofences.get(currentGeofence).setFillColor(0x3F00FF00);
                                             geofences.get(currentGeofence).setStrokeColor(0x4F009F00);
-                                            Toast.makeText(mainActivity, "Inside polygon " + currentGeofence, Toast.LENGTH_LONG).show();
+                                            actionBar.setTitle("I Geofence område " + (currentGeofence + 1));
                                             mService.playSound(soundTracks.get(currentGeofence));
                                             if (geofences.size() - 1 > currentGeofence) {
                                                 currentGeofence++;
@@ -170,15 +195,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                                                 geofences.get(currentGeofence).setStrokeColor(0x4F00009F);
                                             }
                                             walkStart = true;
+                                            isWalkFinished = false;
                                             myStopwatch.startTimer();
-
-                                            logToTextdoc();
+                                            //logToTextdoc();
+                                            startDialog = false;
                                         }
                                     });
                             alertDialog.show();
+                            startDialog = true;
                         }
                     }
-                    System.out.println("new location " + " LAT "  + myPos.latitude + " Long " + myPos.longitude);
             };
         };
 
@@ -188,9 +214,19 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         soundTracks = new ArrayList<Integer>();
 
-        for(int i = 0 ; i< 12; i++){
-            soundTracks.add(R.raw.slime);
-        }
+        soundTracks.add(R.raw.ljud1);
+        soundTracks.add(R.raw.ljud2);
+        soundTracks.add(R.raw.ljud3);
+        soundTracks.add(R.raw.ljud4);
+        soundTracks.add(R.raw.ljud5);
+        soundTracks.add(R.raw.ljud6);
+        soundTracks.add(R.raw.ljud7);
+        soundTracks.add(R.raw.ljud8);
+        soundTracks.add(R.raw.ljud9);
+        soundTracks.add(R.raw.ljud10);
+        soundTracks.add(R.raw.ljud11);
+        soundTracks.add(R.raw.ljud12);
+
     }
 
 
@@ -203,6 +239,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         mMap.setMyLocationEnabled(true);
         startLocationUpdates();
         addGeofences();
+        mFusedLocationClient.getLastLocation()
+                .addOnSuccessListener(this, new OnSuccessListener<Location>() {
+                    @Override
+                    public void onSuccess(Location location) {
+                        if (location != null) {
+                            CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLngZoom(new LatLng(location.getLatitude(), location.getLongitude()), 15);
+                            mMap.animateCamera(cameraUpdate);
+                        }
+                    }
+                });
+//        addTestPositions();
     }
 
     public void logToTextdoc(){
@@ -212,9 +259,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             if (!root.exists()) {
                 root.mkdirs();
             }
-            gpxfile = new File(root, "Locations " + currentTime.toString());
-            FileWriter writer = new FileWriter(gpxfile);
-            writer.append("Latitude    Longitude");
+            gpxfile = new File(root, "Locations " + currentTime.toString() + ".txt");
+            FileWriter writer = new FileWriter(gpxfile, true);
+            writer.append("Latitude    Longitude \n");
             writer.flush();
             writer.close();
             Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show();
@@ -224,8 +271,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
     public void logToTextdoc(LatLng pos){
         try {
-            FileWriter writer = new FileWriter(gpxfile);
-            writer.append(pos.latitude + "  "  + pos.longitude);
+            FileWriter writer =  new FileWriter(gpxfile, true);
+            writer.append(pos.latitude + " "  + pos.longitude + "\n");
             writer.flush();
             writer.close();
         }
@@ -284,7 +331,26 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         mFusedLocationClient.requestLocationUpdates(mLocationRequest, mLocationCallback, null );
     }
 
+    public void addTestPositions(){
+        try {
+            BufferedReader reader = new BufferedReader(new InputStreamReader(getAssets().open("location_test_1.txt")));
+            String line;
+            reader.readLine();
+            int counter = 1;
+            while ((line = reader.readLine()) != null) {
+                System.out.println("new marker");
+                String[] RowData = line.split(" ");
+                LatLng latLng = new LatLng(Double.valueOf(RowData[0]), Double.valueOf(RowData[1]));
+                mMap.addMarker(new MarkerOptions().position(latLng)
+                        .title("Marker " + counter));
+                counter++;
+                reader.readLine();
+            }
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
 
+    }
     protected void createLocationRequest() {
         mLocationRequest = new LocationRequest();
         mLocationRequest.setInterval(10000);

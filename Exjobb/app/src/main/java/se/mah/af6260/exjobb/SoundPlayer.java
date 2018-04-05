@@ -50,7 +50,6 @@ public class SoundPlayer extends Service{
         isFinished = false;
         player.setLooping(false);
         player.start();
-        System.out.println("LJUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUD");
         player.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
             @Override
             public void onCompletion(MediaPlayer mediaPlayer) {
@@ -84,7 +83,6 @@ public class SoundPlayer extends Service{
         player.release();
         isPlaying = false;
         isFinished = true;
-        System.out.println("STOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOP");
     }
 
     public class LocalBinder extends Binder {
