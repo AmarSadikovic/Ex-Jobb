@@ -120,7 +120,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                             tv.setMovementMethod(LinkMovementMethod.getInstance());
                             double ms = (distanceInMeters/myStopwatch.getSeconds());
                             tv.setText(Html.fromHtml("<H2>Medelhastighet(NOTERA): </H2><b> <H3>" + String.format("%.2f", ms) + " m/s</H3></b><br>" +
-                                    "<H2>Besök länk för att besvara enkät: <a href='https://docs.google.com/forms/d/16AMvDPzxSQlolzcf8UdvNi6B2DOcJIR1A6YK9rRMrVg/prefill'>Click Here</a></H2>"));
+                                    "<H2>Besök länk för att besvara enkät: <a href='https://docs.google.com/forms/d/e/1FAIpQLSeBr_wuwYuy0N5Lsn9t__nfmx440hw7tlc-QlhIDPG05lTDag/viewform'>Click Here</a></H2>"));
                             AlertDialog alertDialog = new AlertDialog.Builder(MainActivity.this).create();
                             alertDialog.setTitle("Vandring klar!");
                             alertDialog.setView(tv);
@@ -141,7 +141,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                             } else if (mService.isPause()) {
                                 mService.resume();
                                 myStopwatch.resumeTimer();
-                                actionBar.setTitle("I Geofence område " + currentGeofence + 1);
+                                actionBar.setTitle("I Geofence område " + (currentGeofence + 1));
                                 geofences.get(currentGeofence - 1).setFillColor(0x3F00FF00);
                                 geofences.get(currentGeofence - 1).setStrokeColor(0x4F009F00);
                             }
